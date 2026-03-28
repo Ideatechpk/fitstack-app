@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, numeric, date } from "drizzle-orm/pg-core";
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey(),
@@ -24,11 +24,63 @@ export const contacts = pgTable("contacts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const projects = pgTable("projects", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull(),
+  contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").default("active").notNull(),
+  priority: text("priority").default("medium").notNull(),
+  budget: numeric("budget", { precision: 12, scale: 2 }),
+  spent: numeric("spent", { precision: 12, scale: 2 }).default("0"),
+  startDate: date("start_date"),
+  dueDate: date("due_date"),
+  completedAt: timestamp("completed_at"),
+  tags: text("tags").array(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const invoices = pgTable("invoices", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull(),
+  contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  invoiceNumber: text("invoice_number").notNull(),
+  status: text("status").default("draft").notNull(),
+  issueDate: date("issue_date").defaultNow().notNull(),
+  dueDate: date("due_date"),
+  subtotal: numeric("subtotal", { precision: 12, scale: 2 }).default("0").notNull(),
+  taxRate: numeric("tax_rate", { precision: 5, scale: 2 }).default("0"),
+  taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }).default("0"),
+  total: numeric("total", { precision: 12, scale: 2 }).default("0").notNull(),
+  currency: text("currency").default("USD").notNull(),
+  notes: text("notes"),
+  items: jsonb("items").default([]),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const whatsappMessages = pgTable("whatsapp_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull(),
+  contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  direction: text("direction").notNull(),
+  messageType: text("message_type").default("text").notNull(),
+  content: text("content").notNull(),
+  waMessageId: text("wa_message_id"),
+  status: text("status").default("sent").notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const activities = pgTable("activities", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").notNull(),
   contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // note, call, email, meeting, task
+  type: text("type").notNull(),
   title: text("title").notNull(),
   description: text("description"),
   metadata: jsonb("metadata"),
