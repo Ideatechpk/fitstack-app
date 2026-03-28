@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Receipt, X, Trash2, Edit, DollarSign, CheckCircle } from "lucide-react";
+import { Plus, Search, Receipt, X, Trash2, Edit, DollarSign, CheckCircle, Printer, Link, Check } from "lucide-react";
 import { cn, formatRelative } from "@/lib/utils";
 
 interface Invoice {
@@ -26,6 +26,7 @@ export default function InvoicesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [form, setForm] = useState({
     invoice_number: "", status: "draft", issue_date: new Date().toISOString().split("T")[0],
     due_date: "", subtotal: "", tax_rate: "0", currency: "USD", notes: "",
@@ -53,7 +54,6 @@ export default function InvoicesPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Real-time
   useEffect(() => {
     const channel = supabase.channel("invoices-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, () => fetchData())
@@ -70,6 +70,18 @@ export default function InvoicesPage() {
       items: [{ description: "", quantity: "1", rate: "", amount: "" }],
     });
     setEditingId(null); setShowForm(false);
+  }
+
+  function startEdit(inv: Invoice) {
+    setForm({
+      invoice_number: inv.invoice_number, status: inv.status,
+      issue_date: inv.issue_date, due_date: inv.due_date || "",
+      subtotal: inv.subtotal, tax_rate: inv.tax_rate, currency: inv.currency,
+      notes: inv.notes || "", contact_id: inv.contact_id || "",
+      project_id: inv.project_id || "",
+      items: (inv.items && (inv.items as any[]).length > 0) ? inv.items as any[] : [{ description: "", quantity: "1", rate: "", amount: "" }],
+    });
+    setEditingId(inv.id); setShowForm(true);
   }
 
   function updateItem(index: number, field: string, value: string) {
@@ -126,6 +138,22 @@ export default function InvoicesPage() {
     if (!confirm("Delete this invoice?")) return;
     await supabase.from("invoices").delete().eq("id", id);
     fetchData();
+  }
+
+  async function copyPortalLink(contactId: string | null, invoiceId: string) {
+    if (!contactId) return;
+    try {
+      const res = await fetch("/api/portal", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        await navigator.clipboard.writeText(data.url);
+        setCopiedId(invoiceId);
+        setTimeout(() => setCopiedId(null), 2000);
+      }
+    } catch { /* silent fail */ }
   }
 
   const totalRevenue = invoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total), 0);
@@ -190,7 +218,7 @@ export default function InvoicesPage() {
                     className="w-full bg-brand-navy border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-brand-green/50 transition" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Client</label>
                   <select value={form.contact_id} onChange={e => setForm({...form, contact_id: e.target.value})}
@@ -207,7 +235,15 @@ export default function InvoicesPage() {
                     {projectsList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Status</label>
+                  <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}
+                    className="w-full bg-brand-navy border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-brand-green/50 transition">
+                    {STATUS_OPTS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                  </select>
+                </div>
               </div>
+
               {/* Line Items */}
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Line Items</label>
@@ -215,28 +251,30 @@ export default function InvoicesPage() {
                   {form.items.map((item, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-end">
                       <div className="col-span-5">
+                        {i === 0 && <span className="text-[10px] text-gray-600 mb-0.5 block">Description</span>}
                         <input type="text" placeholder="Description" value={item.description} onChange={e => updateItem(i, "description", e.target.value)}
                           className="w-full bg-brand-navy border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-brand-green/50 transition" />
                       </div>
                       <div className="col-span-2">
+                        {i === 0 && <span className="text-[10px] text-gray-600 mb-0.5 block">Qty</span>}
                         <input type="number" placeholder="Qty" value={item.quantity} onChange={e => updateItem(i, "quantity", e.target.value)}
                           className="w-full bg-brand-navy border border-white/10 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-brand-green/50 transition" />
                       </div>
                       <div className="col-span-2">
+                        {i === 0 && <span className="text-[10px] text-gray-600 mb-0.5 block">Rate</span>}
                         <input type="number" step="0.01" placeholder="Rate" value={item.rate} onChange={e => updateItem(i, "rate", e.target.value)}
                           className="w-full bg-brand-navy border border-white/10 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:border-brand-green/50 transition" />
                       </div>
                       <div className="col-span-2 text-right text-sm text-gray-400 py-2">${item.amount || "0.00"}</div>
                       <div className="col-span-1">
-                        <button type="button" onClick={() => removeItem(i)} className="p-2 text-gray-600 hover:text-red-400 transition">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        <button type="button" onClick={() => removeItem(i)} className="p-2 text-gray-600 hover:text-red-400 transition"><X className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))}
                 </div>
                 <button type="button" onClick={addItem} className="text-xs text-brand-blue hover:text-brand-blue-light mt-2 transition">+ Add line item</button>
               </div>
+
               {/* Totals */}
               <div className="bg-brand-navy rounded-lg p-4 space-y-2">
                 <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white">${form.subtotal || "0.00"}</span></div>
@@ -250,14 +288,16 @@ export default function InvoicesPage() {
                   <span className="text-brand-green">${((parseFloat(form.subtotal) || 0) * (1 + (parseFloat(form.tax_rate) || 0) / 100)).toFixed(2)}</span>
                 </div>
               </div>
+
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Notes</label>
                 <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} rows={2}
                   className="w-full bg-brand-navy border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-brand-green/50 transition resize-none" />
               </div>
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={resetForm} className="flex-1 border border-white/10 text-gray-400 hover:text-white py-2.5 rounded-lg text-sm font-medium transition">Cancel</button>
-                <button type="submit" className="flex-1 bg-brand-green hover:bg-brand-green-dark text-white py-2.5 rounded-lg text-sm font-semibold transition">{editingId ? "Update" : "Create Invoice"}</button>
+                <button type="submit" className="flex-1 bg-brand-green hover:bg-brand-green-dark text-white py-2.5 rounded-lg text-sm font-semibold transition">{editingId ? "Update Invoice" : "Create Invoice"}</button>
               </div>
             </form>
           </div>
@@ -284,7 +324,10 @@ export default function InvoicesPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-white">{inv.invoice_number}</p>
+                    {/* Clickable invoice number opens edit modal */}
+                    <button onClick={() => startEdit(inv)} className="text-sm font-medium text-white hover:text-brand-green transition">
+                      {inv.invoice_number}
+                    </button>
                     <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border badge-${inv.status}`}>
                       {inv.status.toUpperCase()}
                     </span>
@@ -293,17 +336,38 @@ export default function InvoicesPage() {
                     {inv.contacts?.full_name || "No client"} {inv.projects ? `· ${inv.projects.name}` : ""}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="text-right mr-2">
                   <p className="text-sm font-semibold text-white">${parseFloat(inv.total).toLocaleString()}</p>
                   <p className="text-xs text-gray-500">{new Date(inv.issue_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                  {/* Print / PDF button */}
+                  <a href={`/invoice-print/${inv.id}`} target="_blank" rel="noopener noreferrer" title="Print / Download PDF"
+                    className="p-1.5 text-gray-600 hover:text-brand-blue rounded-lg hover:bg-white/5 transition">
+                    <Printer className="w-3.5 h-3.5" />
+                  </a>
+                  {/* Portal link button */}
+                  {inv.contact_id && (
+                    <button onClick={() => copyPortalLink(inv.contact_id, inv.id)} title="Copy client portal link"
+                      className="p-1.5 text-gray-600 hover:text-brand-green rounded-lg hover:bg-white/5 transition">
+                      {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-brand-green" /> : <Link className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                  {/* Edit button */}
+                  <button onClick={() => startEdit(inv)} title="Edit invoice"
+                    className="p-1.5 text-gray-600 hover:text-white rounded-lg hover:bg-white/5 transition">
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                  {/* Mark paid button */}
                   {inv.status !== "paid" && (
-                    <button onClick={() => markPaid(inv.id)} className="p-1.5 text-gray-600 hover:text-green-400 rounded-lg hover:bg-white/5" title="Mark Paid">
+                    <button onClick={() => markPaid(inv.id)} title="Mark as paid"
+                      className="p-1.5 text-gray-600 hover:text-green-400 rounded-lg hover:bg-white/5 transition">
                       <CheckCircle className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-gray-600 hover:text-red-400 rounded-lg hover:bg-white/5">
+                  {/* Delete button */}
+                  <button onClick={() => handleDelete(inv.id)} title="Delete"
+                    className="p-1.5 text-gray-600 hover:text-red-400 rounded-lg hover:bg-white/5 transition">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
