@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export async function GET(request: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   // Use service role key to bypass RLS (portal tokens are accessed by external clients)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
 
   // Find token
   const { data: tokenRecord, error: tokenError } = await supabase
-    .from("portal_tokens").select("*").eq("token", params.token).eq("is_active", true).single();
+    .from("portal_tokens").select("*").eq("token", token).eq("is_active", true).single();
 
   if (tokenError || !tokenRecord) {
     return NextResponse.json({ error: "Invalid or expired portal link" }, { status: 404 });
